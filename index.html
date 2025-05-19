@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Chatbot</title>
+  <style>
+    body { font-family: Arial; margin: 40px; }
+    #chat-box { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; margin-bottom: 10px; }
+    .user { color: rgb(0, 0, 0); margin-bottom: 5px; }
+    .bot { color: green; margin-bottom: 10px; }
+    input, button { padding: 8px; margin: 5px 0; }
+    #chat-area { display: none; }
+  </style>
+</head>
+<body>
+  <h2>Chatbot</h2>
+
+  <!-- Login Section -->
+  <div id="login-area">
+    <h3>Login</h3>
+    <input type="text" id="username" placeholder="Username" /><br>
+    <input type="password" id="password" placeholder="Password" /><br>
+    <button onclick="login()">Login</button>
+    <p id="login-status"></p>
+  </div>
+
+  <!-- Chat Section -->
+  <div id="chat-area">
+    <div id="chat-box"></div>
+    <input type="text" id="user-input" placeholder="Type your message..." />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="logout()">Logout</button>
+  </div>
+
+  <script>
+    async function login() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const status = document.getElementById("login-status");
+
+      const response = await fetch("http://127.0.0.1:8000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem("access_token", data.access_token);
+        document.getElementById("login-area").style.display = "none";
+        document.getElementById("chat-area").style.display = "block";
+        status.textContent = "";
+      } else {
+        status.textContent = "Login failed: " + data.detail;
+      }
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('user-input');
+      const message = input.value.trim();
+      if (!message) return;
+
+      const chatBox = document.getElementById('chat-box');
+      chatBox.innerHTML += `<div class="user"><b>You:</b> ${message}</div>`;
+      const botId = `bot-${Date.now()}`;
+      chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${botId}"></span></div>`;
+
+      const token = localStorage.getItem("access_token");
+      if (!token) {
+        alert("You must login first.");
+        return;
+      }
+
+      const response = await fetch("http://127.0.0.1:8000/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ message })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let botSpan = document.getElementById(botId);
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("data: ").filter(part => part.trim() !== "");
+        buffer = ""; // Reset buffer after processing
+
+        for (const part of parts) {
+          try {
+            const parsed = JSON.parse(part.trim());
+            botSpan.textContent += parsed.response;
+            chatBox.scrollTop = chatBox.scrollHeight;
+          } catch (err) {
+            // ignore incomplete chunk
+          }
+        }
+      }
+
+      input.value = "";
+    }
+
+    function logout() {
+      localStorage.removeItem("access_token");
+      document.getElementById("chat-area").style.display = "none";
+      document.getElementById("login-area").style.display = "block";
+      document.getElementById("chat-box").innerHTML = "";
+    }
+
+    // Auto-login if token exists
+    window.onload = function () {
+      const token = localStorage.getItem("access_token");
+      if (token) {
+        document.getElementById("login-area").style.display = "none";
+        document.getElementById("chat-area").style.display = "block";
+      }
+    };
+  </script>
+</body>
+</html>

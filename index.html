@@ -33,95 +33,99 @@
   </div>
 
   <script>
+    let socket;
+  
     async function login() {
       const username = document.getElementById("username").value;
       const password = document.getElementById("password").value;
       const status = document.getElementById("login-status");
-
+  
       const response = await fetch("http://127.0.0.1:8000/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       });
-
+  
       const data = await response.json();
-
+  
       if (response.ok) {
         localStorage.setItem("access_token", data.access_token);
         document.getElementById("login-area").style.display = "none";
         document.getElementById("chat-area").style.display = "block";
         status.textContent = "";
+  
+        // Connect WebSocket after login
+        connectWebSocket(data.access_token);
       } else {
         status.textContent = "Login failed: " + data.detail;
       }
     }
-
-    async function sendMessage() {
+  
+    function connectWebSocket(token) {
+      socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat?token=${token}`);
+  
+      socket.onopen = () => {
+        console.log("✅ WebSocket connected");
+      };
+  
+      socket.onerror = (e) => {
+        console.error("WebSocket error:", e);
+        alert("WebSocket connection failed.");
+      };
+  
+      socket.onclose = () => {
+        console.warn("WebSocket closed.");
+      };
+  
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const botSpan = document.getElementById(currentBotId);
+        if (botSpan) {
+          botSpan.textContent += data.response;
+          const chatBox = document.getElementById('chat-box');
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+      };
+    }
+  
+    let currentBotId = "";
+  
+    function sendMessage() {
       const input = document.getElementById('user-input');
       const message = input.value.trim();
       if (!message) return;
-
+  
       const chatBox = document.getElementById('chat-box');
       chatBox.innerHTML += `<div class="user"><b>You:</b> ${message}</div>`;
-      const botId = `bot-${Date.now()}`;
-      chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${botId}"></span></div>`;
-
-      const token = localStorage.getItem("access_token");
-      if (!token) {
-        alert("You must login first.");
+      currentBotId = `bot-${Date.now()}`;
+      chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${currentBotId}"></span></div>`;
+  
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        alert("WebSocket is not connected. Please refresh or login again.");
         return;
       }
-
-      const response = await fetch("http://127.0.0.1:8000/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ message })
-      });
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let botSpan = document.getElementById(botId);
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const parts = buffer.split("data: ").filter(part => part.trim() !== "");
-        buffer = ""; // Reset buffer after processing
-
-        for (const part of parts) {
-          try {
-            const parsed = JSON.parse(part.trim());
-            botSpan.textContent += parsed.response;
-            chatBox.scrollTop = chatBox.scrollHeight;
-          } catch (err) {
-            // ignore incomplete chunk
-          }
-        }
-      }
-
+  
+      socket.send(JSON.stringify({ message }));
       input.value = "";
     }
-
+  
     function logout() {
       localStorage.removeItem("access_token");
+      if (socket) {
+        socket.close();
+      }
       document.getElementById("chat-area").style.display = "none";
       document.getElementById("login-area").style.display = "block";
       document.getElementById("chat-box").innerHTML = "";
     }
-
+  
     // Auto-login if token exists
     window.onload = function () {
       const token = localStorage.getItem("access_token");
       if (token) {
         document.getElementById("login-area").style.display = "none";
         document.getElementById("chat-area").style.display = "block";
+        connectWebSocket(token);
       }
     };
   </script>

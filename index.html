@@ -1,133 +1,254 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <title>Chatbot</title>
-  <style>
-    body { font-family: Arial; margin: 40px; }
-    #chat-box { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: auto; margin-bottom: 10px; }
-    .user { color: rgb(0, 0, 0); margin-bottom: 5px; }
-    .bot { color: green; margin-bottom: 10px; }
-    input, button { padding: 8px; margin: 5px 0; }
-    #chat-area { display: none; }
-  </style>
-</head>
-<body>
-  <h2>Chatbot</h2>
-
-  <!-- Login Section -->
-  <div id="login-area">
-    <h3>Login</h3>
-    <input type="text" id="username" placeholder="Username" /><br>
-    <input type="password" id="password" placeholder="Password" /><br>
-    <button onclick="login()">Login</button>
-    <p id="login-status"></p>
-  </div>
-
-  <!-- Chat Section -->
-  <div id="chat-area">
-    <div id="chat-box"></div>
-    <input type="text" id="user-input" placeholder="Type your message..." />
-    <button onclick="sendMessage()">Send</button>
-    <button onclick="logout()">Logout</button>
-  </div>
-
-  <script>
-    let socket;
-  
-    async function login() {
-      const username = document.getElementById("username").value;
-      const password = document.getElementById("password").value;
-      const status = document.getElementById("login-status");
-  
-      const response = await fetch("http://127.0.0.1:8000/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
-      });
-  
-      const data = await response.json();
-  
-      if (response.ok) {
-        localStorage.setItem("access_token", data.access_token);
-        document.getElementById("login-area").style.display = "none";
-        document.getElementById("chat-area").style.display = "block";
-        status.textContent = "";
-  
-        // Connect WebSocket after login
-        connectWebSocket(data.access_token);
-      } else {
-        status.textContent = "Login failed: " + data.detail;
-      }
-    }
-  
-    function connectWebSocket(token) {
-      socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat?token=${token}`);
-  
-      socket.onopen = () => {
-        console.log("✅ WebSocket connected");
-      };
-  
-      socket.onerror = (e) => {
-        console.error("WebSocket error:", e);
-        alert("WebSocket connection failed.");
-      };
-  
-      socket.onclose = () => {
-        console.warn("WebSocket closed.");
-      };
-  
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        const botSpan = document.getElementById(currentBotId);
-        if (botSpan) {
-          botSpan.textContent += data.response;
-          const chatBox = document.getElementById('chat-box');
-          chatBox.scrollTop = chatBox.scrollHeight;
+    <meta charset="UTF-8">
+    <title>Voice Chatbot</title>
+    <style>
+        body {
+            font-family: Arial;
+            margin: 40px;
         }
-      };
-    }
-  
-    let currentBotId = "";
-  
-    function sendMessage() {
-      const input = document.getElementById('user-input');
-      const message = input.value.trim();
-      if (!message) return;
-  
-      const chatBox = document.getElementById('chat-box');
-      chatBox.innerHTML += `<div class="user"><b>You:</b> ${message}</div>`;
-      currentBotId = `bot-${Date.now()}`;
-      chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${currentBotId}"></span></div>`;
-  
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        alert("WebSocket is not connected. Please refresh or login again.");
-        return;
-      }
-  
-      socket.send(JSON.stringify({ message }));
-      input.value = "";
-    }
-  
-    function logout() {
-      localStorage.removeItem("access_token");
-      if (socket) {
-        socket.close();
-      }
-      document.getElementById("chat-area").style.display = "none";
-      document.getElementById("login-area").style.display = "block";
-      document.getElementById("chat-box").innerHTML = "";
-    }
-  
-    // Auto-login if token exists
-    window.onload = function () {
-      const token = localStorage.getItem("access_token");
-      if (token) {
-        document.getElementById("login-area").style.display = "none";
-        document.getElementById("chat-area").style.display = "block";
-        connectWebSocket(token);
-      }
-    };
-  </script>
+
+        #chat-box {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .user {
+            color: rgb(0, 0, 0);
+            margin-bottom: 5px;
+        }
+
+        .bot {
+            color: green;
+            margin-bottom: 10px;
+        }
+
+        input,
+        button {
+            padding: 8px;
+            margin: 5px 0;
+        }
+
+        #chat-area {
+            display: none;
+        }
+
+        #voice-btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+        }
+
+        #voice-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Chatbot</h2>
+
+    <!-- Login Section -->
+    <div id="login-area">
+        <h3>Login</h3>
+        <input type="text" id="username" placeholder="Username" /><br>
+        <input type="password" id="password" placeholder="Password" /><br>
+        <button onclick="login()">Login</button>
+        <p id="login-status"></p>
+    </div>
+
+    <!-- Chat Section -->
+    <div id="chat-area">
+        <div id="chat-box"></div>
+        <input type="text" id="user-input" placeholder="Type your message..." />
+        <button onclick="sendMessage()">Send</button>
+        <button id="voice-btn" onclick="startVoiceInput()">Speak</button>
+        <input type="file" id="image-input" accept="image/*" style="display:none" />
+        <button onclick="document.getElementById('image-input').click()">Send Image</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <script>
+        let socket;
+        let currentBotId = "";
+
+        async function login() {
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const status = document.getElementById("login-status");
+
+            const response = await fetch("http://127.0.0.1:8000/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                localStorage.setItem("access_token", data.access_token);
+                document.getElementById("login-area").style.display = "none";
+                document.getElementById("chat-area").style.display = "block";
+                connectWebSocket(data.access_token);
+            } else {
+                status.textContent = "Login failed: " + data.detail;
+            }
+        }
+
+        function connectWebSocket(token) {
+            socket = new WebSocket(`ws://127.0.0.1:8000/ws/chat?token=${token}`);
+
+            socket.onopen = () => {
+                console.log("WebSocket connected");
+            };
+
+            socket.onerror = (e) => {
+                console.error("WebSocket error:", e);
+                alert("WebSocket connection failed.");
+            };
+
+            socket.onclose = () => {
+                console.warn("WebSocket closed.");
+            };
+
+            let messageBuffer = "";
+            let fromVoiceFlag = false;
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                const botSpan = document.getElementById(currentBotId);
+                if (data.response !== undefined) {
+                    if (botSpan) {
+                        botSpan.textContent += data.response + " ";
+                    }
+                    messageBuffer += data.response + " ";
+                }
+
+                // Set fromVoiceFlag if first response
+                if (data.hasOwnProperty("fromVoice")) {
+                    fromVoiceFlag = data.fromVoice;
+                }
+
+                // If final signal from backend, speak the full message
+                if (data.is_done) {
+                    if (fromVoiceFlag) {
+                        speakText(messageBuffer.trim());
+                    }
+                    messageBuffer = "";
+                }
+                // if (botSpan) {
+                //     botSpan.textContent += data.response + " ";
+                //     speakText(data.response);
+                //     const chatBox = document.getElementById('chat-box');
+                //     chatBox.scrollTop = chatBox.scrollHeight;
+                // }
+                // Auto-scroll
+                const chatBox = document.getElementById('chat-box');
+                chatBox.scrollTop = chatBox.scrollHeight;
+            };
+        }
+
+        function sendMessage(msg = null, fromVoice = false) {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML += `<div class="user"><b>You:</b> ${message}</div>`;
+            currentBotId = `bot-${Date.now()}`;
+            chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${currentBotId}"></span></div>`;
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert("WebSocket is not connected. Please refresh or login again.");
+                return;
+            }
+
+            socket.send(JSON.stringify({ message, fromVoice }));
+            input.value = "";
+        }
+
+        function sendImage(base64Image) {
+            const chatBox = document.getElementById('chat-box');
+            chatBox.innerHTML += `<div class="user"><b>You sent an image</b><br><img src="${base64Image}" alt="sent image" style="max-width:200px; max-height:200px;" /></div>`;
+            currentBotId = `bot-${Date.now()}`;
+            chatBox.innerHTML += `<div class="bot"><b>Bot:</b> <span id="${currentBotId}"></span></div>`;
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                alert("WebSocket is not connected. Please refresh or login again.");
+                return;
+            }
+
+            // Send image as base64 string with empty message and fromVoice false
+            socket.send(JSON.stringify({ message: "", image: base64Image, fromVoice: false }));
+        }
+
+        // Handle image selection and convert to base64
+        document.getElementById('image-input').addEventListener('change', function () {
+            const file = this.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const base64Image = e.target.result;
+                sendImage(base64Image);
+            };
+            reader.readAsDataURL(file);
+
+            // Clear input so same file can be selected again if needed
+            this.value = "";
+        });
+
+
+        function logout() {
+            localStorage.removeItem("access_token");
+            if (socket) socket.close();
+            document.getElementById("chat-area").style.display = "none";
+            document.getElementById("login-area").style.display = "block";
+            document.getElementById("chat-box").innerHTML = "";
+        }
+
+        function startVoiceInput() {
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                document.getElementById("user-input").value = transcript;
+                sendMessage(transcript, true);
+            };
+
+            recognition.onerror = (e) => {
+                console.error("Voice recognition error:", e.error);
+                alert("Voice input failed. Please try again.");
+            };
+
+            recognition.start();
+        }
+
+        function speakText(text) {
+            const synth = window.speechSynthesis;
+            if (!synth) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = "en-US";
+            synth.speak(utterance);
+        }
+
+
+        window.onload = function () {
+            const token = localStorage.getItem("access_token");
+            if (token) {
+                document.getElementById("login-area").style.display = "none";
+                document.getElementById("chat-area").style.display = "block";
+                connectWebSocket(token);
+            }
+        };
+    </script>
 </body>
+
 </html>
